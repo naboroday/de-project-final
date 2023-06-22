@@ -52,6 +52,27 @@ CREATE TABLE ST23052707__DWH.global_metrics
     cnt_accounts_make_transactions int
 );
 
+-- Запрос для формирования витрины
+INSERT INTO ST23052707__DWH.global_metrics (date_update, currency_from, amount_total, cnt_transactions, avg_transactions_per_account, cnt_accounts_make_transactions)
+SELECT b.date_update, b.currency_from,
+  SUM(CASE WHEN b.amount < 0 THEN b.amount * (-1) ELSE b.amount * 1 END)/100 as amount_total,
+  SUM(cnt_operation_id) as cnt_transactions,
+  SUM(cnt_operation_id)/COUNT(account_number_from) as avg_transactions_per_account,
+  COUNT(account_number_from) as cnt_accounts_make_transactions
+FROM (SELECT  DISTINCT date(transaction_dt) as date_update, currency_code as currency_from,
+	account_number_from, amount, count(operation_id) as cnt_operation_id
+  FROM (SELECT a.transaction_dt, a.currency_code, a.account_number_from,a.amount,a.operation_id
+      FROM ST23052707__STAGING.transactions_1 a
+      LEFT JOIN ST23052707__STAGING.transactions_keys c
+	ON c.operation_id = a.operation_id AND c.transaction_dt = a.transaction_dt
+      WHERE a.account_number_from>0 and c.operation_id IS NULL AND c.transaction_dt IS NULL 
+	  AND date(a.transaction_dt) >= %s
+	  AND date(a.transaction_dt) < %s
+      )a
+  GROUP BY date(transaction_dt), currency_code,account_number_from, amount
+  ) b
+GROUP BY b.date_update, b.currency_from
+
 -- Примеры создания запросов в METABASE
 --Количества уникальных пользователей
 SELECT DISTINCT
@@ -83,3 +104,5 @@ SELECT DISTINCT
 WHERE 1=1
   [[AND currency_code_with = {{currency_code_with}}]]
 GROUP BY a.date_update,a.currency_code_with;
+
+
